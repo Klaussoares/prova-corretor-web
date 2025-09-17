@@ -8,11 +8,6 @@ import shutil
 import logging
 from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, send_file
-from pdf2image import convert_from_path
-from PIL import Image
-import cv2
-import numpy as np
-import pandas as pd
 from openpyxl import Workbook, load_workbook
 from flask_cors import cross_origin
 from src.config import (
@@ -23,8 +18,14 @@ from src.config import (
 
 prova_bp = Blueprint('prova', __name__)
 
-# Configuração da API Gemini (import condicional para evitar erro no deploy)
+# Imports condicionais para evitar erros no deploy
 model = None
+convert_from_path = None
+Image = None
+cv2 = None
+np = None
+pd = None
+
 try:
     if GEMINI_API_KEY:
         import google.generativeai as genai
@@ -35,6 +36,15 @@ try:
         )
 except ImportError:
     logging.warning("Google Generative AI não disponível no ambiente de deploy")
+
+try:
+    from pdf2image import convert_from_path
+    from PIL import Image
+    import cv2
+    import numpy as np
+    import pandas as pd
+except ImportError:
+    logging.warning("Dependências de processamento de imagem não disponíveis no ambiente de deploy")
 
 # Configuração de logging
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -137,6 +147,11 @@ def processar_provas():
         if not GEMINI_API_KEY or not model:
             log_action(email, "ERRO_PROCESSAMENTO", error="API Gemini não configurada ou não disponível")
             return jsonify({'erro': 'API Gemini não configurada ou não disponível no ambiente atual'}), 500
+        
+        # Verificar se as dependências de processamento estão disponíveis
+        if not all([convert_from_path, Image, cv2, np]):
+            log_action(email, "ERRO_DEPENDENCIAS", error="Dependências de processamento não disponíveis")
+            return jsonify({'erro': 'Dependências de processamento não disponíveis no ambiente atual'}), 500
         
         # Verificar se os arquivos foram enviados
         if 'excel' not in request.files or 'pdf' not in request.files:
