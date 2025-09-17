@@ -8,7 +8,6 @@ import shutil
 import logging
 from werkzeug.utils import secure_filename
 from flask import Blueprint, request, jsonify, send_file
-import google.generativeai as genai
 from pdf2image import convert_from_path
 from PIL import Image
 import cv2
@@ -24,13 +23,18 @@ from src.config import (
 
 prova_bp = Blueprint('prova', __name__)
 
-# Configuração da API Gemini
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction="Você é excelente ajudante para corrigir rapidamente provas de alunos."
-    )
+# Configuração da API Gemini (import condicional para evitar erro no deploy)
+model = None
+try:
+    if GEMINI_API_KEY:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction="Você é excelente ajudante para corrigir rapidamente provas de alunos."
+        )
+except ImportError:
+    logging.warning("Google Generative AI não disponível no ambiente de deploy")
 
 # Configuração de logging
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -130,9 +134,9 @@ def processar_provas():
     
     try:
         # Verificar se a API Gemini está configurada
-        if not GEMINI_API_KEY:
-            log_action(email, "ERRO_PROCESSAMENTO", error="API Gemini não configurada")
-            return jsonify({'erro': 'API Gemini não configurada'}), 500
+        if not GEMINI_API_KEY or not model:
+            log_action(email, "ERRO_PROCESSAMENTO", error="API Gemini não configurada ou não disponível")
+            return jsonify({'erro': 'API Gemini não configurada ou não disponível no ambiente atual'}), 500
         
         # Verificar se os arquivos foram enviados
         if 'excel' not in request.files or 'pdf' not in request.files:
@@ -278,7 +282,7 @@ def status():
     """Retorna o status da API."""
     return jsonify({
         'status': 'online',
-        'gemini_configurado': bool(GEMINI_API_KEY),
+        'gemini_configurado': bool(GEMINI_API_KEY and model),
         'emails_autorizados_count': len(EMAILS_AUTORIZADOS),
         'timestamp': datetime.now().isoformat()
     })
