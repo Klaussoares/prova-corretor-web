@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corretor de Provas Automático</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        .container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .form-group input[type="email"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .form-group input[type="email"]:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        .file-upload input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-upload-label {
+            display: block;
+            padding: 20px;
+            border: 2px dashed #e1e5e9;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .file-upload-label:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .file-upload-label.has-file {
+            border-color: #28a745;
+            background: #f0fff4;
+            color: #28a745;
+        }
+
+        .file-upload-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-top: 15px;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e1e5e9;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+        }
+
+        .step::after {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: #e1e5e9;
+            z-index: -1;
+        }
+
+        .step:last-child::after {
+            display: none;
+        }
+
+        .step-number {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #e1e5e9;
+            color: #666;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .step.active .step-number {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .step.completed .step-number {
+            background: #28a745;
+            color: white;
+        }
+
+        .step-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+                margin: 10px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .step-label {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 Corretor de Provas</h1>
+            <p>Sistema automático de correção de provas com IA</p>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step active" id="step1">
+                <div class="step-number">1</div>
+                <div class="step-label">Login</div>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <div class="step-label">Upload</div>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-number">3</div>
+                <div class="step-label">Processamento</div>
+            </div>
+            <div class="step" id="step4">
+                <div class="step-number">4</div>
+                <div class="step-label">Download</div>
+            </div>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <!-- Tela de Login -->
+        <div id="loginScreen">
+            <div class="form-group">
+                <label for="email">E-mail autorizado:</label>
+                <input type="email" id="email" placeholder="Digite seu e-mail" required>
+            </div>
+            <button class="btn btn-primary" onclick="verificarEmail()">
+                <span id="loginLoading" class="loading hidden"></span>
+                Acessar Sistema
+            </button>
+        </div>
+
+        <!-- Tela de Upload -->
+        <div id="uploadScreen" class="hidden">
+            <div class="form-group">
+                <label>Arquivo Excel (Gabarito):</label>
+                <div class="file-upload">
+                    <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="updateFileLabel('excel')">
+                    <label for="excelFile" class="file-upload-label" id="excelLabel">
+                        <span class="file-upload-icon">📊</span>
+                        <div>Clique para selecionar o arquivo Excel</div>
+                        <small>Formatos aceitos: .xlsx, .xls</small>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Arquivo PDF (Provas):</label>
+                <div class="file-upload">
+                    <input type="file" id="pdfFile" accept=".pdf" onchange="updateFileLabel('pdf')">
+                    <label for="pdfFile" class="file-upload-label" id="pdfLabel">
+                        <span class="file-upload-icon">📄</span>
+                        <div>Clique para selecionar o arquivo PDF</div>
+                        <small>Formato aceito: .pdf</small>
+                    </label>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="processarArquivos()" id="processBtn" disabled>
+                <span id="processLoading" class="loading hidden"></span>
+                Processar Provas
+            </button>
+
+            <button class="btn btn-secondary" onclick="voltarLogin()">
+                Voltar ao Login
+            </button>
+        </div>
+
+        <!-- Tela de Processamento -->
+        <div id="processScreen" class="hidden">
+            <div class="alert alert-info">
+                <strong>Processando...</strong><br>
+                Aguarde enquanto as provas são corrigidas automaticamente.
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <!-- Tela de Download -->
+        <div id="downloadScreen" class="hidden">
+            <div class="alert alert-success">
+                <strong>Processamento concluído!</strong><br>
+                Seu arquivo de resultados está pronto para download.
+            </div>
+            <button class="btn btn-primary" onclick="downloadResultado()">
+                📥 Baixar Resultados
+            </button>
+            <button class="btn btn-secondary" onclick="reiniciarProcesso()">
+                🔄 Processar Novos Arquivos
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let currentEmail = '';
+        let resultBlob = null;
+
+        function showAlert(message, type = 'info') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = message;
+            alertContainer.innerHTML = '';
+            alertContainer.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        function updateStep(stepNumber) {
+            // Reset all steps
+            for (let i = 1; i <= 4; i++) {
+                const step = document.getElementById(`step${i}`);
+                step.classList.remove('active', 'completed');
+                if (i < stepNumber) {
+                    step.classList.add('completed');
+                } else if (i === stepNumber) {
+                    step.classList.add('active');
+                }
+            }
+        }
+
+        function showScreen(screenId) {
+            const screens = ['loginScreen', 'uploadScreen', 'processScreen', 'downloadScreen'];
+            screens.forEach(screen => {
+                document.getElementById(screen).classList.add('hidden');
+            });
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        async function verificarEmail() {
+            const email = document.getElementById('email').value.trim();
+            
+            if (!email) {
+                showAlert('Por favor, digite um e-mail válido.', 'error');
+                return;
+            }
+
+            const loadingSpan = document.getElementById('loginLoading');
+            loadingSpan.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/prova/verificar-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+
+                const data = await response.json();
+
+                if (data.autorizado) {
+                    currentEmail = email;
+                    showAlert('Acesso autorizado! Bem-vindo ao sistema.', 'success');
+                    updateStep(2);
+                    showScreen('uploadScreen');
+                } else {
+                    showAlert('Acesso não autorizado. Verifique seu e-mail.', 'error');
+                }
+            } catch (error) {
+                showAlert('Erro ao verificar e-mail. Tente novamente.', 'error');
+                console.error('Erro:', error);
+            } finally {
+                loadingSpan.classList.add('hidden');
+            }
+        }
+
+        function updateFileLabel(type) {
+            const fileInput = document.getElementById(`${type}File`);
+            const label = document.getElementById(`${type}Label`);
+            
+            if (fileInput.files.length > 0) {
+                const fileName = fileInput.files[0].name;
+                label.classList.add('has-file');
+                label.innerHTML = `
+                    <span class="file-upload-icon">✅</span>
+                    <div><strong>${fileName}</strong></div>
+                    <small>Arquivo selecionado</small>
+                `;
+            }
+
+            // Verificar se ambos os arquivos foram selecionados
+            const excelFile = document.getElementById('excelFile').files[0];
+            const pdfFile = document.getElementById('pdfFile').files[0];
+            const processBtn = document.getElementById('processBtn');
+            
+            if (excelFile && pdfFile) {
+                processBtn.disabled = false;
+            } else {
+                processBtn.disabled = true;
+            }
+        }
+
+        async function processarArquivos() {
+            const excelFile = document.getElementById('excelFile').files[0];
+            const pdfFile = document.getElementById('pdfFile').files[0];
+
+            if (!excelFile || !pdfFile) {
+                showAlert('Por favor, selecione ambos os arquivos.', 'error');
+                return;
+            }
+
+            const loadingSpan = document.getElementById('processLoading');
+            loadingSpan.classList.remove('hidden');
+
+            updateStep(3);
+            showScreen('processScreen');
+
+            // Simular progresso
+            let progress = 0;
+            const progressFill = document.getElementById('progressFill');
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                progressFill.style.width = progress + '%';
+            }, 500);
+
+            try {
+                const formData = new FormData();
+                formData.append('excel', excelFile);
+                formData.append('pdf', pdfFile);
+                formData.append('email', currentEmail);
+
+                const response = await fetch('/api/prova/processar', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                clearInterval(progressInterval);
+                progressFill.style.width = '100%';
+
+                if (response.ok) {
+                    resultBlob = await response.blob();
+                    showAlert('Processamento concluído com sucesso!', 'success');
+                    updateStep(4);
+                    showScreen('downloadScreen');
+                } else {
+                    const errorData = await response.json();
+                    showAlert(`Erro no processamento: ${errorData.erro}`, 'error');
+                    showScreen('uploadScreen');
+                    updateStep(2);
+                }
+            } catch (error) {
+                clearInterval(progressInterval);
+                showAlert('Erro ao processar arquivos. Tente novamente.', 'error');
+                console.error('Erro:', error);
+                showScreen('uploadScreen');
+                updateStep(2);
+            } finally {
+                loadingSpan.classList.add('hidden');
+            }
+        }
+
+        function downloadResultado() {
+            if (resultBlob) {
+                const url = window.URL.createObjectURL(resultBlob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'resultado_provas.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showAlert('Download iniciado!', 'success');
+            }
+        }
+
+        function reiniciarProcesso() {
+            // Reset form
+            document.getElementById('excelFile').value = '';
+            document.getElementById('pdfFile').value = '';
+            document.getElementById('excelLabel').classList.remove('has-file');
+            document.getElementById('pdfLabel').classList.remove('has-file');
+            document.getElementById('excelLabel').innerHTML = `
+                <span class="file-upload-icon">📊</span>
+                <div>Clique para selecionar o arquivo Excel</div>
+                <small>Formatos aceitos: .xlsx, .xls</small>
+            `;
+            document.getElementById('pdfLabel').innerHTML = `
+                <span class="file-upload-icon">📄</span>
+                <div>Clique para selecionar o arquivo PDF</div>
+                <small>Formato aceito: .pdf</small>
+            `;
+            document.getElementById('processBtn').disabled = true;
+            
+            resultBlob = null;
+            updateStep(2);
+            showScreen('uploadScreen');
+        }
+
+        function voltarLogin() {
+            currentEmail = '';
+            document.getElementById('email').value = '';
+            updateStep(1);
+            showScreen('loginScreen');
+        }
+
+        // Permitir upload por drag and drop
+        ['excelFile', 'pdfFile'].forEach(fileId => {
+            const fileInput = document.getElementById(fileId);
+            const label = fileInput.nextElementSibling;
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                label.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                label.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                label.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight(e) {
+                label.style.borderColor = '#667eea';
+                label.style.background = '#f0f2ff';
+            }
+
+            function unhighlight(e) {
+                label.style.borderColor = '#e1e5e9';
+                label.style.background = '#f8f9fa';
+            }
+
+            label.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    updateFileLabel(fileId.replace('File', ''));
+                }
+            }
+        });
+
+        // Verificar status da API ao carregar a página
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/prova/status');
+                const data = await response.json();
+                
+                if (!data.gemini_configurado) {
+                    showAlert('⚠️ API Gemini não configurada. Entre em contato com o administrador.', 'error');
+                }
+            } catch (error) {
+                showAlert('⚠️ Erro ao conectar com o servidor. Verifique sua conexão.', 'error');
+            }
+        });
+    </script>
+</body>
+</html>
