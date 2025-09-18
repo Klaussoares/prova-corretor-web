@@ -3,9 +3,8 @@ from datetime import datetime
 
 # Configurações de segurança
 EMAILS_AUTORIZADOS = [
-    'admin@exemplo.com',
-    'professor@escola.com',
-    'coordenador@instituicao.edu.br',
+    'klausoares@hotmail.com',
+    'natalli.plens@eaportal.org',
     'teste@teste.com'  # Para testes
 ]
 
