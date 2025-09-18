@@ -10,9 +10,5 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
-      - key: PYTHONPATH
-        value: "src"
       # A variável GEMINI_API_KEY deve ser configurada diretamente no dashboard do Render
       # para manter sua chave segura. Não a adicione aqui diretamente.
-
-
