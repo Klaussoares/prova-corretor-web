@@ -7,6 +7,7 @@ google-generativeai
 pdf2image
 opencv-python-headless
 pillow
+psycopg2-binary
 
 gunicorn
 
