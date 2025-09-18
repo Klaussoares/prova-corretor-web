@@ -10,5 +10,12 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
-      # A variável GEMINI_API_KEY deve ser configurada diretamente no dashboard do Render
-      # para manter sua chave segura. Não a adicione aqui diretamente.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prova-corretor-db   # Nome do serviço PostgreSQL criado no Render
+          property: connectionString
+      # GEMINI_API_KEY deve ser configurada no dashboard do Render
+databases:
+  - name: prova-corretor-db
+    databaseName: provacorretor
+    user: provacorretor_user
