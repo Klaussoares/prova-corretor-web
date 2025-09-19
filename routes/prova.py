@@ -256,10 +256,8 @@ def processar_provas():
                             "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
                             "não considere hifens nem pontuações, apenas letras normais"
                             "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
-                            "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
-                            "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. "
-                            "Nomes como Kavana não existem, é Kauana"
-                        )
+                            "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!")
+                        
                         resposta_nome = model.generate_content([prompt_nome, img_nome])
                         nome_texto = resposta_nome.text.strip()
 
