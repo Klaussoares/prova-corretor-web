@@ -31,7 +31,7 @@ if GEMINI_API_KEY:
 else:
     model = None
 
-DPI = int(os.environ.get("PDF_DPI", "150"))
+DPI = int(os.environ.get("PDF_DPI", "100"))
 
 
 prova_bp = Blueprint('prova', __name__)
@@ -154,6 +154,7 @@ def verificar_email():
         log_action("DESCONHECIDO", "ERRO_LOGIN", error=str(e))
         return jsonify({'erro': 'Erro interno do servidor'}), 500
 
+
 @prova_bp.route('/processar', methods=['POST'])
 @cross_origin()
 def processar_provas():
@@ -182,6 +183,11 @@ def processar_provas():
         # Novo: tipo de prova enviado pelo frontend (padrão = novo)
         tipo_prova = request.form.get('tipo_prova', 'novo').lower()
 
+        # Escolher coordenadas de acordo com o tipo de prova
+        if tipo_prova == "antigo":
+            COORDS = COORDS_ANTIGO
+        else:
+            COORDS = COORDS_NOVO
 
         # Verificar se o e-mail está autorizado
         if not is_email_authorized(email):
@@ -190,7 +196,7 @@ def processar_provas():
 
         # Log do início do processamento
         log_action(email, "INICIO_PROCESSAMENTO",
-                  f"Arquivos: {excel_file.filename}, {pdf_file.filename}")
+                   f"Arquivos: {excel_file.filename}, {pdf_file.filename}")
 
         # Criar diretório temporário
         temp_dir = tempfile.mkdtemp()
@@ -207,14 +213,23 @@ def processar_provas():
             gabaritos = carregar_gabaritos_excel(excel_path)
             if not gabaritos:
                 log_action(email, "ERRO_GABARITO",
-                          error="Não foi possível carregar os gabaritos do arquivo Excel")
+                           error="Não foi possível carregar os gabaritos do arquivo Excel")
                 return jsonify({'erro': 'Não foi possível carregar os gabaritos do arquivo Excel'}), 400
 
             log_action(email, "GABARITOS_CARREGADOS",
-                      f"Modelos encontrados: {list(gabaritos.keys())}")
+                       f"Modelos encontrados: {list(gabaritos.keys())}")
 
-            # Descobrir quantidade de páginas primeiro (quase zero de memória)
+            # Criar workbook para resultados
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Resultados"
+            ws.append(["Nome", "Modelo", "Nota"])
+
+            provas_processadas = 0
+
+            # Descobrir quantidade de páginas primeiro (baixo consumo de memória)
             try:
+                from pdf2image import pdfinfo_from_path
                 info = pdfinfo_from_path(pdf_path, userpw=None)
                 total_paginas = int(info.get("Pages", 0))
                 if total_paginas <= 0:
@@ -224,20 +239,21 @@ def processar_provas():
                 log_action(email, "ERRO_PDF_INFO", error=f"Erro ao ler info do PDF: {str(e)}")
                 return jsonify({'erro': 'Erro ao ler informações do PDF'}), 400
 
-            # Processar cada página sem carregar o PDF inteiro na memória
+            # Processar cada página sem carregar o PDF inteiro
             import gc
+            DPI = 200  # Reduzido para menor consumo de RAM
 
             for page_index in range(1, total_paginas + 1):
                 try:
                     log_action(email, "PROCESSANDO_PAGINA", f"Página {page_index} de {total_paginas}")
 
-                    # Converte só a página atual (DPI menor = menos RAM)
+                    # Converte só a página atual
                     pages = convert_from_path(
                         pdf_path,
                         dpi=DPI,
                         first_page=page_index,
                         last_page=page_index,
-                        thread_count=1  # mantém consumo de RAM baixo
+                        thread_count=1
                     )
                     pagina = pages[0]
 
@@ -249,18 +265,17 @@ def processar_provas():
 
                     # Extrair nome
                     prompt_nome = (
-                        "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
-                        "não considere hifens nem pontuações, apenas letras normais"
-                        "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
-                        "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
-                        "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. Nomes como Kavana não existem, é Kauana"
+                        "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito. "
+                        "não considere hifens nem pontuações, apenas letras normais. "
+                        "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas. "
+                        "NUNCA escreva nada além do nome do aluno! "
+                        "Corrija possíveis erros comuns como 'u' confundido com 'v'."
                     )
                     resposta_nome = model.generate_content([prompt_nome, img_nome])
                     nome_texto = resposta_nome.text.strip()
 
                     # Extrair modelo
-                    prompt_modelo = ("Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? "
-                                     "Apresente apenas o numero do modelo, exemplo: '1' ou '2' ou '3'")
+                    prompt_modelo = "Qual é o modelo do gabarito nesta imagem? Responda apenas com o número (1, 2, 3...)."
                     resposta_modelo = model.generate_content([prompt_modelo, img_modelo])
                     modelo_texto = resposta_modelo.text.strip()
 
@@ -268,10 +283,8 @@ def processar_provas():
                     prompt_resposta = (
                         "Liste as alternativas marcadas no cartão-resposta desta imagem.\n"
                         "Considere apenas A, B, C, D ou E.\n"
-                        "Se houver duas alternativas por questão, mostre como A/B.\n"
                         "Formato: 'Respostas: A, B, C...'\n"
                         "Se nenhuma estiver marcada, responda 'Vazia'."
-                        "Assinale a letra que está claramente marcada com X, cruz ou rasura visível."
                     )
                     resposta_resposta = model.generate_content([prompt_resposta, img_resposta])
                     respostas_texto = resposta_resposta.text.strip()
@@ -287,7 +300,6 @@ def processar_provas():
                 except Exception as e:
                     log_action(email, "ERRO_PAGINA", error=f"Erro ao processar página {page_index}: {str(e)}")
                 finally:
-                    # libera memória da página
                     try:
                         del pages
                         del pagina
@@ -300,9 +312,8 @@ def processar_provas():
             wb.save(resultado_path)
 
             log_action(email, "PROCESSAMENTO_CONCLUIDO",
-                      f"Total de provas processadas: {provas_processadas}, Arquivo gerado: resultado_provas.xlsx")
+                       f"Total de provas processadas: {provas_processadas}, Arquivo gerado: resultado_provas.xlsx")
 
-            # Retornar arquivo para download
             return send_file(
                 resultado_path,
                 as_attachment=True,
@@ -311,7 +322,6 @@ def processar_provas():
             )
 
         finally:
-            # Limpar arquivos temporários após um delay
             def cleanup():
                 try:
                     shutil.rmtree(temp_dir)
@@ -319,7 +329,6 @@ def processar_provas():
                 except Exception as e:
                     log_action(email, "ERRO_LIMPEZA", error=f"Erro ao remover arquivos temporários: {str(e)}")
 
-            # Em produção, você pode usar um job scheduler para isso
             import threading
             timer = threading.Timer(CLEANUP_DELAY_SECONDS, cleanup)
             timer.start()
@@ -327,6 +336,7 @@ def processar_provas():
     except Exception as e:
         log_action(email, "ERRO_GERAL", error=f"Erro geral no processamento: {str(e)}")
         return jsonify({'erro': 'Erro interno do servidor'}), 500
+
 
 @prova_bp.route('/status', methods=['GET'])
 @cross_origin()
