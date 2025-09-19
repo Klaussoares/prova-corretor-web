@@ -154,7 +154,6 @@ def verificar_email():
         log_action("DESCONHECIDO", "ERRO_LOGIN", error=str(e))
         return jsonify({'erro': 'Erro interno do servidor'}), 500
 
-
 @prova_bp.route('/processar', methods=['POST'])
 @cross_origin()
 def processar_provas():
@@ -180,7 +179,7 @@ def processar_provas():
         excel_file = request.files['excel']
         pdf_file = request.files['pdf']
 
-        # Novo: tipo de prova enviado pelo frontend (padrão = novo)
+        # Tipo de prova (padrão = novo)
         tipo_prova = request.form.get('tipo_prova', 'novo').lower()
 
         # Escolher coordenadas de acordo com o tipo de prova
@@ -227,9 +226,8 @@ def processar_provas():
 
             provas_processadas = 0
 
-            # Descobrir quantidade de páginas primeiro (baixo consumo de memória)
+            # Descobrir quantidade de páginas primeiro
             try:
-                from pdf2image import pdfinfo_from_path
                 info = pdfinfo_from_path(pdf_path, userpw=None)
                 total_paginas = int(info.get("Pages", 0))
                 if total_paginas <= 0:
@@ -239,15 +237,15 @@ def processar_provas():
                 log_action(email, "ERRO_PDF_INFO", error=f"Erro ao ler info do PDF: {str(e)}")
                 return jsonify({'erro': 'Erro ao ler informações do PDF'}), 400
 
-            # Processar cada página sem carregar o PDF inteiro
+            # Processar cada página individualmente (menos RAM)
             import gc
-            DPI = 200  # Reduzido para menor consumo de RAM
+            DPI = 200  # ajustável
 
             for page_index in range(1, total_paginas + 1):
                 try:
                     log_action(email, "PROCESSANDO_PAGINA", f"Página {page_index} de {total_paginas}")
 
-                    # Converte só a página atual
+                    # Converte apenas a página atual
                     pages = convert_from_path(
                         pdf_path,
                         dpi=DPI,
@@ -257,7 +255,7 @@ def processar_provas():
                     )
                     pagina = pages[0]
 
-                    # Cortes das imagens usando o conjunto de coordenadas correto
+                    # Cortes das imagens usando coordenadas
                     img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
                     img_nome = preprocessar_para_ia(img_nome)
                     img_modelo = crop_pil(pagina, COORDS["BOX_MODELO"])
@@ -266,7 +264,7 @@ def processar_provas():
                     # Extrair nome
                     prompt_nome = (
                         "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito. "
-                        "não considere hifens nem pontuações, apenas letras normais. "
+                        "Não considere hifens nem pontuações, apenas letras normais. "
                         "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas. "
                         "NUNCA escreva nada além do nome do aluno! "
                         "Corrija possíveis erros comuns como 'u' confundido com 'v'."
@@ -307,13 +305,14 @@ def processar_provas():
                         pass
                     gc.collect()
 
-            # Salvar arquivo de resultado
+            # Salvar resultado
             resultado_path = os.path.join(temp_dir, 'resultado_provas.xlsx')
             wb.save(resultado_path)
 
             log_action(email, "PROCESSAMENTO_CONCLUIDO",
                        f"Total de provas processadas: {provas_processadas}, Arquivo gerado: resultado_provas.xlsx")
 
+            # Retornar arquivo para download
             return send_file(
                 resultado_path,
                 as_attachment=True,
@@ -322,6 +321,7 @@ def processar_provas():
             )
 
         finally:
+            # Limpar arquivos temporários depois de um delay
             def cleanup():
                 try:
                     shutil.rmtree(temp_dir)
@@ -336,7 +336,6 @@ def processar_provas():
     except Exception as e:
         log_action(email, "ERRO_GERAL", error=f"Erro geral no processamento: {str(e)}")
         return jsonify({'erro': 'Erro interno do servidor'}), 500
-
 
 @prova_bp.route('/status', methods=['GET'])
 @cross_origin()
