@@ -59,3 +59,15 @@ def get_log_entry(email, action, details=None, error=None):
     
     return entry
 
+# --- Integração com Gemini ---
+try:
+    import google.generativeai as genai
+
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+    else:
+        model = None
+except ImportError:
+    model = None
+
