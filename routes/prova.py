@@ -219,14 +219,12 @@ def processar_provas():
 
             log_action(email, "GABARITOS_CARREGADOS",
                        f"Modelos encontrados: {list(gabaritos.keys())}")
-
-            # Converter PDF para imagens
-            try:
-                paginas = convert_from_path(pdf_path, dpi=300)
-                log_action(email, "PDF_CONVERTIDO", f"Total de páginas: {len(paginas)}")
-            except Exception as e:
-                log_action(email, "ERRO_PDF", error=f"Erro ao converter PDF: {str(e)}")
-                return jsonify({'erro': 'Erro ao processar o arquivo PDF'}), 400
+            
+            # === Alteração: Processar PDF em blocos de 3 páginas ===
+            from PyPDF2 import PdfReader
+            pdf_reader = PdfReader(pdf_path)
+            total_paginas = len(pdf_reader.pages)
+            log_action(email, "PDF_CONVERTIDO", f"Total de páginas: {total_paginas}")
 
             # Criar workbook para resultados
             wb = Workbook()
@@ -236,61 +234,70 @@ def processar_provas():
 
             provas_processadas = 0
 
-            # Processar cada página
-            for i, pagina in enumerate(paginas):
+            # Processar cada página em blocos de 3
+            for i in range(0, total_paginas, 3):
                 try:
-                    log_action(email, "PROCESSANDO_PAGINA", f"Página {i + 1} de {len(paginas)}")
-
-                    # Cortes das imagens usando coordenadas
-                    img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
-                    img_nome = preprocessar_para_ia(img_nome)
-                    img_modelo = crop_pil(pagina, COORDS["BOX_MODELO"])
-                    img_resposta = crop_pil(pagina, COORDS["BOX_RESPOSTA"])
-
-                    # Extrair nome
-                    prompt_nome = (
-                        "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
-                        "não considere hifens nem pontuações, apenas letras normais"
-                        "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
-                        "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
-                        "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. "
-                        "Nomes como Kavana não existem, é Kauana"
+                    # Converte apenas o bloco de páginas atual
+                    paginas_bloco = convert_from_path(
+                        pdf_path, dpi=300, first_page=i + 1, last_page=min(i + 3, total_paginas)
                     )
-                    resposta_nome = model.generate_content([prompt_nome, img_nome])
-                    nome_texto = resposta_nome.text.strip()
+                    
+                    for j, pagina in enumerate(paginas_bloco):
+                        log_action(email, "PROCESSANDO_PAGINA", f"Página {i + j + 1} de {total_paginas}")
 
-                    # Extrair modelo
-                    prompt_modelo = (
-                        "Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? "
-                        "Apresente apenas o numero do modelo, exemplo: '1' ou '2' ou '3'"
-                    )
-                    resposta_modelo = model.generate_content([prompt_modelo, img_modelo])
-                    modelo_texto = resposta_modelo.text.strip()
+                        # Cortes das imagens usando coordenadas
+                        img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
+                        img_nome = preprocessar_para_ia(img_nome)
+                        img_modelo = crop_pil(pagina, COORDS["BOX_MODELO"])
+                        img_resposta = crop_pil(pagina, COORDS["BOX_RESPOSTA"])
 
-                    # Extrair respostas
-                    prompt_resposta = (
-                        "Liste as alternativas marcadas no cartão-resposta desta imagem.\n"
-                        "Considere apenas A, B, C, D ou E.\n"
-                        "Se houver duas alternativas por questão, mostre como A/B.\n"
-                        "Formato: 'Respostas: A, B, C...'\n"
-                        "Se nenhuma estiver marcada, responda 'Vazia'."
-                        "Assinale a letra que está claramente marcada com X, cruz ou rasura visível."
-                    )
-                    resposta_resposta = model.generate_content([prompt_resposta, img_resposta])
-                    respostas_texto = resposta_resposta.text.strip()
+                        # Extrair nome
+                        prompt_nome = (
+                            "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
+                            "não considere hifens nem pontuações, apenas letras normais"
+                            "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
+                            "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
+                            "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. "
+                            "Nomes como Kavana não existem, é Kauana"
+                        )
+                        resposta_nome = model.generate_content([prompt_nome, img_nome])
+                        nome_texto = resposta_nome.text.strip()
 
-                    # Corrigir prova
-                    acertos = corrigir_prova(nome_texto, modelo_texto, respostas_texto, gabaritos)
-                    ws.append([nome_texto, modelo_texto, acertos])
+                        # Extrair modelo
+                        prompt_modelo = (
+                            "Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? "
+                            "Apresente apenas o numero do modelo, exemplo: '1' ou '2' ou '3'"
+                        )
+                        resposta_modelo = model.generate_content([prompt_modelo, img_modelo])
+                        modelo_texto = resposta_modelo.text.strip()
 
-                    provas_processadas += 1
-                    log_action(email, "PROVA_CORRIGIDA",
-                               f"Página {i + 1} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
+                        # Extrair respostas
+                        prompt_resposta = (
+                            "Liste as alternativas marcadas no cartão-resposta desta imagem.\n"
+                            "Considere apenas A, B, C, D ou E.\n"
+                            "Se houver duas alternativas por questão, mostre como A/B.\n"
+                            "Formato: 'Respostas: A, B, C...'\n"
+                            "Se nenhuma estiver marcada, responda 'Vazia'."
+                            "Assinale a letra que está claramente marcada com X, cruz ou rasura visível."
+                        )
+                        resposta_resposta = model.generate_content([prompt_resposta, img_resposta])
+                        respostas_texto = resposta_resposta.text.strip()
+
+                        # Corrigir prova
+                        acertos = corrigir_prova(nome_texto, modelo_texto, respostas_texto, gabaritos)
+                        ws.append([nome_texto, modelo_texto, acertos])
+
+                        provas_processadas += 1
+                        log_action(email, "PROVA_CORRIGIDA",
+                                   f"Página {i + j + 1} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
+
+                    # Libera a memória do bloco de páginas processado
+                    del paginas_bloco
 
                 except Exception as e:
-                    log_action(email, "ERRO_PAGINA", error=f"Erro ao processar página {i + 1}: {str(e)}")
+                    log_action(email, "ERRO_PAGINA", error=f"Erro ao processar bloco de páginas {i + 1} a {i + 3}: {str(e)}")
                     continue
-
+            
             # Salvar arquivo de resultado
             resultado_path = os.path.join(temp_dir, 'resultado_provas.xlsx')
             wb.save(resultado_path)
