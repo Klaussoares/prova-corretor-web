@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import logging
 from werkzeug.utils import secure_filename
+from pdf2image import convert_from_path, pdfinfo_from_path
 from flask import Blueprint, request, jsonify, send_file
 from openpyxl import Workbook, load_workbook
 from flask_cors import cross_origin
@@ -29,6 +30,8 @@ if GEMINI_API_KEY:
     model = genai.GenerativeModel("gemini-1.5-flash")
 else:
     model = None
+
+DPI = int(os.environ.get("PDF_DPI", "150"))
 
 
 prova_bp = Blueprint('prova', __name__)
@@ -209,34 +212,34 @@ def processar_provas():
             
             log_action(email, "GABARITOS_CARREGADOS", 
                       f"Modelos encontrados: {list(gabaritos.keys())}")
-            
-            # Converter PDF para imagens
+
+            # Descobrir quantidade de páginas primeiro (quase zero de memória)
             try:
-                paginas = convert_from_path(pdf_path, dpi=300)
-                log_action(email, "PDF_CONVERTIDO", f"Total de páginas: {len(paginas)}")
+                info = pdfinfo_from_path(pdf_path, userpw=None)
+                total_paginas = int(info.get("Pages", 0))
+                if total_paginas <= 0:
+                    raise RuntimeError("PDF sem páginas detectadas")
+                log_action(email, "PDF_INFO", f"Total de páginas: {total_paginas}")
             except Exception as e:
-                log_action(email, "ERRO_PDF", error=f"Erro ao converter PDF: {str(e)}")
-                return jsonify({'erro': 'Erro ao processar o arquivo PDF'}), 400
-            
-            # Criar workbook para resultados
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Resultados"
-            ws.append(["Nome", "Modelo", "Nota"])
-            
-            provas_processadas = 0
+                log_action(email, "ERRO_PDF_INFO", error=f"Erro ao ler info do PDF: {str(e)}")
+                return jsonify({'erro': 'Erro ao ler informações do PDF'}), 400
 
-            # Escolher o conjunto de coordenadas
-            tipo_prova = request.form.get("tipo_prova", "novo").strip().lower()
-            if tipo_prova == "antigo":
-                COORDS = COORDS_ANTIGO
-            else:
-                COORDS = COORDS_NOVO
+            # Processar cada página sem carregar o PDF inteiro na memória
+            import gc
 
-            # Processar cada página
-            for i, pagina in enumerate(paginas):
+            for page_index in range(1, total_paginas + 1):
                 try:
-                    log_action(email, "PROCESSANDO_PAGINA", f"Página {i + 1} de {len(paginas)}")
+                    log_action(email, "PROCESSANDO_PAGINA", f"Página {page_index} de {total_paginas}")
+
+                    # Converte só a página atual (DPI menor = menos RAM)
+                    pages = convert_from_path(
+                        pdf_path,
+                        dpi=DPI,
+                        first_page=page_index,
+                        last_page=page_index,
+                        thread_count=1  # mantém consumo de RAM baixo
+                    )
+                    pagina = pages[0]
 
                     # Cortes das imagens usando o conjunto de coordenadas correto
                     img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
@@ -245,19 +248,22 @@ def processar_provas():
                     img_resposta = crop_pil(pagina, COORDS["BOX_RESPOSTA"])
 
                     # Extrair nome
-                    prompt_nome = ("Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
-                                   "não considere hifens nem pontuações, apenas letras normais"
-                                   "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
-                                   "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
-                                   "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. Nomes como Kavana não existem, é Kauana")
+                    prompt_nome = (
+                        "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
+                        "não considere hifens nem pontuações, apenas letras normais"
+                        "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
+                        "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
+                        "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. Nomes como Kavana não existem, é Kauana"
+                    )
                     resposta_nome = model.generate_content([prompt_nome, img_nome])
                     nome_texto = resposta_nome.text.strip()
-                    
+
                     # Extrair modelo
-                    prompt_modelo = "Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? Apresente apenas o numero do modelo, exemplo: '1' ou '2' ou '3'"
+                    prompt_modelo = ("Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? "
+                                     "Apresente apenas o numero do modelo, exemplo: '1' ou '2' ou '3'")
                     resposta_modelo = model.generate_content([prompt_modelo, img_modelo])
                     modelo_texto = resposta_modelo.text.strip()
-                    
+
                     # Extrair respostas
                     prompt_resposta = (
                         "Liste as alternativas marcadas no cartão-resposta desta imagem.\n"
@@ -269,21 +275,26 @@ def processar_provas():
                     )
                     resposta_resposta = model.generate_content([prompt_resposta, img_resposta])
                     respostas_texto = resposta_resposta.text.strip()
-                    
+
                     # Corrigir prova
                     acertos = corrigir_prova(nome_texto, modelo_texto, respostas_texto, gabaritos)
                     ws.append([nome_texto, modelo_texto, acertos])
-                    
+
                     provas_processadas += 1
-                    
-                    log_action(email, "PROVA_CORRIGIDA", 
-                              f"Página {i + 1} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
-                    
+                    log_action(email, "PROVA_CORRIGIDA",
+                               f"Página {page_index} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
+
                 except Exception as e:
-                    log_action(email, "ERRO_PAGINA", 
-                              error=f"Erro ao processar página {i + 1}: {str(e)}")
-                    continue
-            
+                    log_action(email, "ERRO_PAGINA", error=f"Erro ao processar página {page_index}: {str(e)}")
+                finally:
+                    # libera memória da página
+                    try:
+                        del pages
+                        del pagina
+                    except:
+                        pass
+                    gc.collect()
+
             # Salvar arquivo de resultado
             resultado_path = os.path.join(temp_dir, 'resultado_provas.xlsx')
             wb.save(resultado_path)
