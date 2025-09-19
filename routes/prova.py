@@ -16,9 +16,11 @@ from src.config import (
     COORDS_NOVO,
     COORDS_ANTIGO,
     CLEANUP_DELAY_SECONDS,
+    LOG_DIR,
     is_email_authorized,
     get_log_entry
 )
+
 
 import google.generativeai as genai
 
