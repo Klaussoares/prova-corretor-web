@@ -350,6 +350,14 @@
         <!-- Tela de Upload -->
         <div id="uploadScreen" class="hidden">
             <div class="form-group">
+                <label for="modeloProva">Selecione o modelo da prova:</label>
+                <select id="modeloProva">
+                    <option value="novo" selected>Modelo Novo</option>
+                    <option value="antigo">Modelo Antigo</option>
+                </select>
+            </div>
+
+            <div class="form-group">
                 <label>Arquivo Excel (Gabarito):</label>
                 <div class="file-upload">
                     <input type="file" id="excelFile" accept=".xlsx,.xls" onchange="updateFileLabel('excel')">
@@ -427,7 +435,6 @@
         }
 
         function updateStep(stepNumber) {
-            // Reset all steps
             for (let i = 1; i <= 4; i++) {
                 const step = document.getElementById(`step${i}`);
                 step.classList.remove('active', 'completed');
@@ -499,7 +506,6 @@
                 `;
             }
 
-            // Verificar se ambos os arquivos foram selecionados
             const excelFile = document.getElementById('excelFile').files[0];
             const pdfFile = document.getElementById('pdfFile').files[0];
             const processBtn = document.getElementById('processBtn');
@@ -514,6 +520,7 @@
         async function processarArquivos() {
             const excelFile = document.getElementById('excelFile').files[0];
             const pdfFile = document.getElementById('pdfFile').files[0];
+            const modelo = document.getElementById('modeloProva').value;
 
             if (!excelFile || !pdfFile) {
                 showAlert('Por favor, selecione ambos os arquivos.', 'error');
@@ -526,7 +533,6 @@
             updateStep(3);
             showScreen('processScreen');
 
-            // Simular progresso
             let progress = 0;
             const progressFill = document.getElementById('progressFill');
             const progressInterval = setInterval(() => {
@@ -540,6 +546,7 @@
                 formData.append('excel', excelFile);
                 formData.append('pdf', pdfFile);
                 formData.append('email', currentEmail);
+                formData.append('modelo', modelo);
 
                 const response = await fetch('/api/prova/processar', {
                     method: 'POST',
@@ -588,7 +595,6 @@
         }
 
         function reiniciarProcesso() {
-            // Reset form
             document.getElementById('excelFile').value = '';
             document.getElementById('pdfFile').value = '';
             document.getElementById('excelLabel').classList.remove('has-file');
@@ -617,7 +623,6 @@
             showScreen('loginScreen');
         }
 
-        // Permitir upload por drag and drop
         ['excelFile', 'pdfFile'].forEach(fileId => {
             const fileInput = document.getElementById(fileId);
             const label = fileInput.nextElementSibling;
@@ -662,7 +667,6 @@
             }
         });
 
-        // Verificar status da API ao carregar a página
         window.addEventListener('load', async () => {
             try {
                 const response = await fetch('/api/prova/status');
