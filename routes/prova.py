@@ -11,15 +11,29 @@ from flask import Blueprint, request, jsonify, send_file
 from openpyxl import Workbook, load_workbook
 from flask_cors import cross_origin
 from src.config import (
-    EMAILS_AUTORIZADOS, GEMINI_API_KEY, LOG_DIR, LOG_FILE,
-    BOX_NOME, BOX_MODELO, BOX_RESPOSTA, CLEANUP_DELAY_SECONDS,
-    is_email_authorized, get_log_entry
+    GEMINI_API_KEY,
+    COORDS_NOVO,
+    COORDS_ANTIGO,
+    CLEANUP_DELAY_SECONDS,
+    is_email_authorized,
+    get_log_entry,
+    LOG_DIR,
+    LOG_FILE
 )
+
+import google.generativeai as genai
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+else:
+    model = None
+
 
 prova_bp = Blueprint('prova', __name__)
 
 # Imports condicionais para evitar erros no deploy
-model = None
+# model = None
 convert_from_path = None
 Image = None
 cv2 = None
@@ -164,9 +178,11 @@ def processar_provas():
         # Novo: tipo de prova enviado pelo frontend (padrão = novo)
         tipo_prova = request.form.get('tipo_prova', 'novo').lower()
 
-        # Escolher as coordenadas certas
-        from src.config import COORDS_NOVO, COORDS_ANTIGO
-        COORDS = COORDS_ANTIGO if tipo_prova == 'antigo' else COORDS_NOVO
+        # Decide coordenadas com base no tipo_prova
+        if tipo_prova == "novo":
+            BOX_NOME, BOX_MODELO, BOX_RESPOSTA = BOX_NOME_NOVO, BOX_MODELO_NOVO, BOX_RESPOSTA_NOVO
+        else:
+            BOX_NOME, BOX_MODELO, BOX_RESPOSTA = BOX_NOME_ANTIGO, BOX_MODELO_ANTIGO, BOX_RESPOSTA_ANTIGO
         
         # Verificar se o e-mail está autorizado
         if not is_email_authorized(email):
@@ -213,7 +229,14 @@ def processar_provas():
             ws.append(["Nome", "Modelo", "Nota"])
             
             provas_processadas = 0
-            
+
+            # Escolher o conjunto de coordenadas
+            tipo_prova = request.form.get("tipo_prova", "novo").strip().lower()
+            if tipo_prova == "antigo":
+                COORDS = COORDS_ANTIGO
+            else:
+                COORDS = COORDS_NOVO
+
             # Processar cada página
             for i, pagina in enumerate(paginas):
                 try:
