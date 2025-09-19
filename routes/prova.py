@@ -160,6 +160,13 @@ def processar_provas():
         
         excel_file = request.files['excel']
         pdf_file = request.files['pdf']
+
+        # Novo: tipo de prova enviado pelo frontend (padrão = novo)
+        tipo_prova = request.form.get('tipo_prova', 'novo').lower()
+
+        # Escolher as coordenadas certas
+        from src.config import COORDS_NOVO, COORDS_ANTIGO
+        COORDS = COORDS_ANTIGO if tipo_prova == 'antigo' else COORDS_NOVO
         
         # Verificar se o e-mail está autorizado
         if not is_email_authorized(email):
@@ -211,13 +218,13 @@ def processar_provas():
             for i, pagina in enumerate(paginas):
                 try:
                     log_action(email, "PROCESSANDO_PAGINA", f"Página {i + 1} de {len(paginas)}")
-                    
-                    # Cortes das imagens
-                    img_nome = crop_pil(pagina, BOX_NOME)
+
+                    # Cortes das imagens usando o conjunto de coordenadas correto
+                    img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
                     img_nome = preprocessar_para_ia(img_nome)
-                    img_modelo = crop_pil(pagina, BOX_MODELO)
-                    img_resposta = crop_pil(pagina, BOX_RESPOSTA)
-                    
+                    img_modelo = crop_pil(pagina, COORDS["BOX_MODELO"])
+                    img_resposta = crop_pil(pagina, COORDS["BOX_RESPOSTA"])
+
                     # Extrair nome
                     prompt_nome = ("Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
                                    "não considere hifens nem pontuações, apenas letras normais"
