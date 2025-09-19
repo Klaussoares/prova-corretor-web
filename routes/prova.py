@@ -24,10 +24,7 @@ from src.config import (
 
 import google.generativeai as genai
 
-# --- INÍCIO DA MODIFICAÇÃO: Importar pypdf ---
 from pypdf import PdfReader, PdfWriter
-
-# --- FIM DA MODIFICAÇÃO ---
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -47,7 +44,6 @@ pd = None
 try:
     if GEMINI_API_KEY:
         import google.generativeai as genai
-
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
@@ -75,7 +71,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
 
 def log_action(email, action, details=None, error=None):
     """Registra uma ação no log."""
@@ -145,7 +140,6 @@ def corrigir_prova(nome, modelo, respostas, gabaritos):
         return 0
 
 
-# --- INÍCIO DA MODIFICAÇÃO: Nova função para quebrar o PDF ---
 def split_pdf(pdf_path, temp_dir, pages_per_chunk=5):
     """
     Quebra um PDF grande em arquivos menores.
@@ -171,9 +165,6 @@ def split_pdf(pdf_path, temp_dir, pages_per_chunk=5):
         chunked_pdf_paths.append(chunk_path)
 
     return chunked_pdf_paths
-
-
-# --- FIM DA MODIFICAÇÃO ---
 
 
 @prova_bp.route('/verificar-email', methods=['POST'])
@@ -257,12 +248,10 @@ def processar_provas():
 
             log_action(email, "GABARITOS_CARREGADOS",
                        f"Modelos encontrados: {list(gabaritos.keys())}")
-
-            # --- INÍCIO DA MODIFICAÇÃO: Quebrar o PDF e processar em partes ---
+            
             try:
                 log_action(email, "QUEBRANDO_PDF", "Iniciando a divisão do PDF em partes menores.")
-                # O número de páginas por bloco pode ser ajustado aqui
-                chunked_pdf_paths = split_pdf(pdf_path, temp_dir, pages_per_chunk=5)
+                chunked_pdf_paths = split_pdf(pdf_path, temp_dir, pages_per_chunk=5) 
                 log_action(email, "PDF_QUEBRADO", f"Total de arquivos menores criados: {len(chunked_pdf_paths)}")
             except Exception as e:
                 log_action(email, "ERRO_PDF_SPLIT", error=f"Erro ao quebrar o PDF: {str(e)}")
@@ -276,15 +265,16 @@ def processar_provas():
             for i, chunk_path in enumerate(chunked_pdf_paths):
                 try:
                     log_action(email, "PROCESSANDO_CHUNK", f"Processando arquivo {i + 1} de {len(chunked_pdf_paths)}")
-
-                    # Converter o pequeno PDF para imagens
-                    paginas = convert_from_path(chunk_path, dpi=300)
-
+                    
+                    # --- INÍCIO DA MODIFICAÇÃO: Ajuste do DPI para economizar memória ---
+                    paginas = convert_from_path(chunk_path, dpi=150)
+                    # --- FIM DA MODIFICAÇÃO ---
+                    
                     # Processar cada página dentro do chunk
                     for j, pagina in enumerate(paginas):
                         try:
                             provas_processadas += 1
-
+                            
                             # Cortes das imagens usando coordenadas
                             img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
                             img_nome = preprocessar_para_ia(img_nome)
@@ -302,7 +292,7 @@ def processar_provas():
                             )
                             resposta_nome = model.generate_content([prompt_nome, img_nome])
                             nome_texto = resposta_nome.text.strip()
-
+                            
                             # Extrair modelo
                             prompt_modelo = (
                                 "Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? "
@@ -310,7 +300,7 @@ def processar_provas():
                             )
                             resposta_modelo = model.generate_content([prompt_modelo, img_modelo])
                             modelo_texto = resposta_modelo.text.strip()
-
+                            
                             # Extrair respostas
                             prompt_resposta = (
                                 "Liste as alternativas marcadas no cartão-resposta desta imagem.\n"
@@ -325,21 +315,20 @@ def processar_provas():
 
                             # Corrigir prova
                             acertos = corrigir_prova(nome_texto, modelo_texto, respostas_texto, gabaritos)
-
+                            
                             # Adicionar o resultado à lista
                             resultados_finais.append([nome_texto, modelo_texto, acertos])
-
+                            
                             log_action(email, "PROVA_CORRIGIDA",
                                        f"Prova {provas_processadas} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
-
+                                       
                         except Exception as e:
-                            log_action(email, "ERRO_PAGINA",
-                                       error=f"Erro ao processar prova na página {provas_processadas}: {str(e)}")
-                            continue  # Pula para a próxima página do chunk
+                            log_action(email, "ERRO_PAGINA", error=f"Erro ao processar prova na página {provas_processadas}: {str(e)}")
+                            continue # Pula para a próxima página do chunk
 
                 except Exception as e:
                     log_action(email, "ERRO_CHUNK", error=f"Erro ao processar chunk {i + 1}: {str(e)}")
-                    continue  # Pula para o próximo chunk
+                    continue # Pula para o próximo chunk
 
             # Criar workbook e escrever todos os resultados de uma vez
             wb = Workbook()
@@ -356,8 +345,7 @@ def processar_provas():
 
             log_action(email, "PROCESSAMENTO_CONCLUIDO",
                        f"Total de provas processadas: {provas_processadas}, Arquivo gerado: resultado_provas.xlsx")
-
-            # --- FIM DA MODIFICAÇÃO ---
+            
 
             # Retornar arquivo para download
             return send_file(
