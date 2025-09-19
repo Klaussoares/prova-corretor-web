@@ -179,12 +179,7 @@ def processar_provas():
         # Novo: tipo de prova enviado pelo frontend (padrão = novo)
         tipo_prova = request.form.get('tipo_prova', 'novo').lower()
 
-        # Decide coordenadas com base no tipo_prova
-        if tipo_prova == "novo":
-            BOX_NOME, BOX_MODELO, BOX_RESPOSTA = BOX_NOME_NOVO, BOX_MODELO_NOVO, BOX_RESPOSTA_NOVO
-        else:
-            BOX_NOME, BOX_MODELO, BOX_RESPOSTA = BOX_NOME_ANTIGO, BOX_MODELO_ANTIGO, BOX_RESPOSTA_ANTIGO
-        
+
         # Verificar se o e-mail está autorizado
         if not is_email_authorized(email):
             log_action(email, "ACESSO_NEGADO", error="E-mail não autorizado para processamento")
