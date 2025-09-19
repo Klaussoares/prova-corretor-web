@@ -11,14 +11,13 @@ from flask import Blueprint, request, jsonify, send_file
 from openpyxl import Workbook, load_workbook
 from flask_cors import cross_origin
 from src.config import (
+    EMAILS_AUTORIZADOS,
     GEMINI_API_KEY,
     COORDS_NOVO,
     COORDS_ANTIGO,
     CLEANUP_DELAY_SECONDS,
     is_email_authorized,
-    get_log_entry,
-    LOG_DIR,
-    LOG_FILE
+    get_log_entry
 )
 
 import google.generativeai as genai
