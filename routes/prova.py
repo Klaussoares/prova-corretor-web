@@ -140,7 +140,7 @@ def corrigir_prova(nome, modelo, respostas, gabaritos):
         return 0
 
 
-def split_pdf(pdf_path, temp_dir, pages_per_chunk=5):
+def split_pdf(pdf_path, temp_dir, pages_per_chunk=3):  # <<< AQUI ESTÁ A ÚNICA MUDANÇA >>>
     """
     Quebra um PDF grande em arquivos menores.
     Retorna uma lista de caminhos para os arquivos criados.
@@ -251,7 +251,7 @@ def processar_provas():
             
             try:
                 log_action(email, "QUEBRANDO_PDF", "Iniciando a divisão do PDF em partes menores.")
-                chunked_pdf_paths = split_pdf(pdf_path, temp_dir, pages_per_chunk=5) 
+                chunked_pdf_paths = split_pdf(pdf_path, temp_dir, pages_per_chunk=3)
                 log_action(email, "PDF_QUEBRADO", f"Total de arquivos menores criados: {len(chunked_pdf_paths)}")
             except Exception as e:
                 log_action(email, "ERRO_PDF_SPLIT", error=f"Erro ao quebrar o PDF: {str(e)}")
@@ -266,9 +266,7 @@ def processar_provas():
                 try:
                     log_action(email, "PROCESSANDO_CHUNK", f"Processando arquivo {i + 1} de {len(chunked_pdf_paths)}")
                     
-                    # --- INÍCIO DA MODIFICAÇÃO: Ajuste do DPI para economizar memória ---
-                    paginas = convert_from_path(chunk_path, dpi=150)
-                    # --- FIM DA MODIFICAÇÃO ---
+                    paginas = convert_from_path(chunk_path, dpi=200)
                     
                     # Processar cada página dentro do chunk
                     for j, pagina in enumerate(paginas):
