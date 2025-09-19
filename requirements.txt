@@ -12,3 +12,4 @@ pypdf
 gunicorn
 numpy
 pandas
+PyPDF2
