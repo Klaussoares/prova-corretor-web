@@ -9,6 +9,7 @@ opencv-python-headless
 pillow
 psycopg2-binary
 pymupdf
+pypdf
 
 gunicorn
 
