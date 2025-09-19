@@ -357,4 +357,50 @@ def processar_provas():
             def cleanup():
                 try:
                     shutil.rmtree(temp_dir)
-                    log_action(email, "LIM
+                    log_action(email, "LIMPEZA_CONCLUIDA", "Arquivos temporários removidos")
+                except Exception as e:
+                    log_action(email, "ERRO_LIMPEZA", error=f"Erro ao remover arquivos temporários: {str(e)}")
+
+            # Em produção, você pode usar um job scheduler para isso
+            import threading
+            timer = threading.Timer(CLEANUP_DELAY_SECONDS, cleanup)
+            timer.start()
+
+    except Exception as e:
+        log_action(email, "ERRO_GERAL", error=f"Erro geral no processamento: {str(e)}")
+        return jsonify({'erro': 'Erro interno do servidor'}), 500
+
+
+@prova_bp.route('/status', methods=['GET'])
+@cross_origin()
+def status():
+    """Retorna o status da API."""
+    return jsonify({
+        'status': 'online',
+        'gemini_configurado': bool(GEMINI_API_KEY and model),
+        'emails_autorizados_count': len(EMAILS_AUTORIZADOS),
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+@prova_bp.route('/logs', methods=['GET'])
+@cross_origin()
+def get_logs():
+    """Retorna os últimos logs do sistema (apenas para administradores)."""
+    try:
+        if not os.path.exists(LOG_FILE):
+            return jsonify({'logs': []})
+
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        # Retornar apenas as últimas 100 linhas
+        recent_logs = lines[-100:] if len(lines) > 100 else lines
+
+        return jsonify({
+            'logs': [line.strip() for line in recent_logs],
+            'total_lines': len(lines)
+        })
+
+    except Exception as e:
+        return jsonify({'erro': f'Erro ao ler logs: {str(e)}'}), 500
