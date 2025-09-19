@@ -7,7 +7,6 @@ import tempfile
 import shutil
 import logging
 from werkzeug.utils import secure_filename
-from pdf2image import convert_from_path, pdfinfo_from_path
 from flask import Blueprint, request, jsonify, send_file
 from openpyxl import Workbook, load_workbook
 from flask_cors import cross_origin
@@ -31,13 +30,9 @@ if GEMINI_API_KEY:
 else:
     model = None
 
-DPI = int(os.environ.get("PDF_DPI", "100"))
-
-
 prova_bp = Blueprint('prova', __name__)
 
 # Imports condicionais para evitar erros no deploy
-# model = None
 convert_from_path = None
 Image = None
 cv2 = None
@@ -78,26 +73,29 @@ logging.basicConfig(
 def log_action(email, action, details=None, error=None):
     """Registra uma ação no log."""
     log_entry = get_log_entry(email, action, details, error)
-    
+
     # Log no arquivo
     with open(LOG_FILE, 'a', encoding='utf-8') as f:
         f.write(log_entry + '\n')
-    
+
     # Log no console
     if error:
         logging.error(log_entry)
     else:
         logging.info(log_entry)
 
+
 def crop_pil(img, box):
     """Corta uma imagem PIL usando as coordenadas fornecidas."""
     return img.crop(box)
+
 
 def preprocessar_para_ia(imagem_pil):
     """Preprocessa a imagem para melhor reconhecimento pela IA."""
     img_cv = cv2.cvtColor(np.array(imagem_pil), cv2.COLOR_RGB2BGR)
     img_gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
     return Image.fromarray(cv2.cvtColor(img_gray, cv2.COLOR_GRAY2RGB))
+
 
 def carregar_gabaritos_excel(excel_file):
     """Carrega os gabaritos do arquivo Excel fornecido."""
@@ -108,14 +106,18 @@ def carregar_gabaritos_excel(excel_file):
             if "modelo" in sheet_name.lower():
                 numero = ''.join(filter(str.isdigit, sheet_name))
                 ws_gab = wb_gab[sheet_name]
-                respostas = [str(r[1]).strip().upper() for r in ws_gab.iter_rows(min_row=2, max_col=2, values_only=True)
-                             if r[1] and str(r[1]).strip().upper() in ['A', 'B', 'C', 'D', 'E']]
+                respostas = [
+                    str(r[1]).strip().upper()
+                    for r in ws_gab.iter_rows(min_row=2, max_col=2, values_only=True)
+                    if r[1] and str(r[1]).strip().upper() in ['A', 'B', 'C', 'D', 'E']
+                ]
                 gabaritos[numero] = respostas
     except Exception as e:
         logging.error(f"Erro ao ler gabarito: {e}")
         return {}
-    
+
     return gabaritos
+
 
 def corrigir_prova(nome, modelo, respostas, gabaritos):
     """Corrige uma prova individual baseada no gabarito."""
@@ -135,6 +137,7 @@ def corrigir_prova(nome, modelo, respostas, gabaritos):
         logging.error(f"Erro ao corrigir prova de {nome} (modelo {modelo}): {e}")
         return 0
 
+
 @prova_bp.route('/verificar-email', methods=['POST'])
 @cross_origin()
 def verificar_email():
@@ -142,17 +145,18 @@ def verificar_email():
     try:
         data = request.get_json()
         email = data.get('email', '').strip().lower()
-        
+
         if is_email_authorized(email):
             log_action(email, "LOGIN_AUTORIZADO", "Acesso concedido ao sistema")
             return jsonify({'autorizado': True, 'mensagem': 'Acesso autorizado'})
         else:
             log_action(email, "LOGIN_NEGADO", "Tentativa de acesso não autorizado")
             return jsonify({'autorizado': False, 'mensagem': 'Acesso não autorizado'})
-    
+
     except Exception as e:
         log_action("DESCONHECIDO", "ERRO_LOGIN", error=str(e))
         return jsonify({'erro': 'Erro interno do servidor'}), 500
+
 
 @prova_bp.route('/processar', methods=['POST'])
 @cross_origin()
@@ -179,10 +183,8 @@ def processar_provas():
         excel_file = request.files['excel']
         pdf_file = request.files['pdf']
 
-        # Tipo de prova (padrão = novo)
-        tipo_prova = request.form.get('tipo_prova', 'novo').lower()
-
-        # Escolher coordenadas de acordo com o tipo de prova
+        # Escolher o conjunto de coordenadas
+        tipo_prova = request.form.get("tipo_prova", "novo").strip().lower()
         if tipo_prova == "antigo":
             COORDS = COORDS_ANTIGO
         else:
@@ -218,6 +220,14 @@ def processar_provas():
             log_action(email, "GABARITOS_CARREGADOS",
                        f"Modelos encontrados: {list(gabaritos.keys())}")
 
+            # Converter PDF para imagens
+            try:
+                paginas = convert_from_path(pdf_path, dpi=300)
+                log_action(email, "PDF_CONVERTIDO", f"Total de páginas: {len(paginas)}")
+            except Exception as e:
+                log_action(email, "ERRO_PDF", error=f"Erro ao converter PDF: {str(e)}")
+                return jsonify({'erro': 'Erro ao processar o arquivo PDF'}), 400
+
             # Criar workbook para resultados
             wb = Workbook()
             ws = wb.active
@@ -226,34 +236,10 @@ def processar_provas():
 
             provas_processadas = 0
 
-            # Descobrir quantidade de páginas primeiro
-            try:
-                info = pdfinfo_from_path(pdf_path, userpw=None)
-                total_paginas = int(info.get("Pages", 0))
-                if total_paginas <= 0:
-                    raise RuntimeError("PDF sem páginas detectadas")
-                log_action(email, "PDF_INFO", f"Total de páginas: {total_paginas}")
-            except Exception as e:
-                log_action(email, "ERRO_PDF_INFO", error=f"Erro ao ler info do PDF: {str(e)}")
-                return jsonify({'erro': 'Erro ao ler informações do PDF'}), 400
-
-            # Processar cada página individualmente (menos RAM)
-            import gc
-            DPI = 200  # ajustável
-
-            for page_index in range(1, total_paginas + 1):
+            # Processar cada página
+            for i, pagina in enumerate(paginas):
                 try:
-                    log_action(email, "PROCESSANDO_PAGINA", f"Página {page_index} de {total_paginas}")
-
-                    # Converte apenas a página atual
-                    pages = convert_from_path(
-                        pdf_path,
-                        dpi=DPI,
-                        first_page=page_index,
-                        last_page=page_index,
-                        thread_count=1
-                    )
-                    pagina = pages[0]
+                    log_action(email, "PROCESSANDO_PAGINA", f"Página {i + 1} de {len(paginas)}")
 
                     # Cortes das imagens usando coordenadas
                     img_nome = crop_pil(pagina, COORDS["BOX_NOME"])
@@ -263,17 +249,21 @@ def processar_provas():
 
                     # Extrair nome
                     prompt_nome = (
-                        "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito. "
-                        "Não considere hifens nem pontuações, apenas letras normais. "
-                        "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas. "
-                        "NUNCA escreva nada além do nome do aluno! "
-                        "Corrija possíveis erros comuns como 'u' confundido com 'v'."
+                        "Qual o nome completo do aluno nesta imagem? Mostre apenas o que está escrito."
+                        "não considere hifens nem pontuações, apenas letras normais"
+                        "Apresente o nome sempre com as iniciais maiúsculas e as demais minúsculas."
+                        "NUNCA, EM HIPÓTESE ALGUMA, ESCREVA ALGO ALÉM DO NOME DO ALUNO! NUNCA!"
+                        "Se possível, verifique letras que podem ser confundidas, como 'u' e 'v'. "
+                        "Nomes como Kavana não existem, é Kauana"
                     )
                     resposta_nome = model.generate_content([prompt_nome, img_nome])
                     nome_texto = resposta_nome.text.strip()
 
                     # Extrair modelo
-                    prompt_modelo = "Qual é o modelo do gabarito nesta imagem? Responda apenas com o número (1, 2, 3...)."
+                    prompt_modelo = (
+                        "Qual é o modelo do gabarito nesta imagem (Modelo 1, Modelo 2, etc)? "
+                        "Apresente apenas o numero do modelo, exemplo: '1' ou '2' ou '3'"
+                    )
                     resposta_modelo = model.generate_content([prompt_modelo, img_modelo])
                     modelo_texto = resposta_modelo.text.strip()
 
@@ -281,8 +271,10 @@ def processar_provas():
                     prompt_resposta = (
                         "Liste as alternativas marcadas no cartão-resposta desta imagem.\n"
                         "Considere apenas A, B, C, D ou E.\n"
+                        "Se houver duas alternativas por questão, mostre como A/B.\n"
                         "Formato: 'Respostas: A, B, C...'\n"
                         "Se nenhuma estiver marcada, responda 'Vazia'."
+                        "Assinale a letra que está claramente marcada com X, cruz ou rasura visível."
                     )
                     resposta_resposta = model.generate_content([prompt_resposta, img_resposta])
                     respostas_texto = resposta_resposta.text.strip()
@@ -293,19 +285,13 @@ def processar_provas():
 
                     provas_processadas += 1
                     log_action(email, "PROVA_CORRIGIDA",
-                               f"Página {page_index} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
+                               f"Página {i + 1} - Nome: {nome_texto}, Modelo: {modelo_texto}, Nota: {acertos}")
 
                 except Exception as e:
-                    log_action(email, "ERRO_PAGINA", error=f"Erro ao processar página {page_index}: {str(e)}")
-                finally:
-                    try:
-                        del pages
-                        del pagina
-                    except:
-                        pass
-                    gc.collect()
+                    log_action(email, "ERRO_PAGINA", error=f"Erro ao processar página {i + 1}: {str(e)}")
+                    continue
 
-            # Salvar resultado
+            # Salvar arquivo de resultado
             resultado_path = os.path.join(temp_dir, 'resultado_provas.xlsx')
             wb.save(resultado_path)
 
@@ -321,7 +307,7 @@ def processar_provas():
             )
 
         finally:
-            # Limpar arquivos temporários depois de um delay
+            # Limpar arquivos temporários após um delay
             def cleanup():
                 try:
                     shutil.rmtree(temp_dir)
@@ -329,6 +315,7 @@ def processar_provas():
                 except Exception as e:
                     log_action(email, "ERRO_LIMPEZA", error=f"Erro ao remover arquivos temporários: {str(e)}")
 
+            # Em produção, você pode usar um job scheduler para isso
             import threading
             timer = threading.Timer(CLEANUP_DELAY_SECONDS, cleanup)
             timer.start()
@@ -336,6 +323,7 @@ def processar_provas():
     except Exception as e:
         log_action(email, "ERRO_GERAL", error=f"Erro geral no processamento: {str(e)}")
         return jsonify({'erro': 'Erro interno do servidor'}), 500
+
 
 @prova_bp.route('/status', methods=['GET'])
 @cross_origin()
@@ -348,26 +336,25 @@ def status():
         'timestamp': datetime.now().isoformat()
     })
 
+
 @prova_bp.route('/logs', methods=['GET'])
 @cross_origin()
 def get_logs():
     """Retorna os últimos logs do sistema (apenas para administradores)."""
     try:
-        # Em produção, você deveria implementar autenticação de administrador aqui
         if not os.path.exists(LOG_FILE):
             return jsonify({'logs': []})
-        
+
         with open(LOG_FILE, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
+
         # Retornar apenas as últimas 100 linhas
         recent_logs = lines[-100:] if len(lines) > 100 else lines
-        
+
         return jsonify({
             'logs': [line.strip() for line in recent_logs],
             'total_lines': len(lines)
         })
-    
+
     except Exception as e:
         return jsonify({'erro': f'Erro ao ler logs: {str(e)}'}), 500
-
