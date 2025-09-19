@@ -163,9 +163,9 @@ def processar_provas():
             return jsonify({'erro': 'API Gemini não configurada ou não disponível no ambiente atual'}), 500
         
         # Verificar se as dependências de processamento estão disponíveis
-        if not all([convert_from_path, Image, cv2, np]):
-            log_action(email, "ERRO_DEPENDENCIAS", error="Dependências de processamento não disponíveis")
-            return jsonify({'erro': 'Dependências de processamento não disponíveis no ambiente atual'}), 500
+        if not convert_from_path or not Image:
+            log_action(email, "ERRO_DEPENDENCIAS", error="Dependências críticas não disponíveis")
+            return jsonify({'erro': 'Dependências críticas não disponíveis no ambiente atual'}), 500
         
         # Verificar se os arquivos foram enviados
         if 'excel' not in request.files or 'pdf' not in request.files:
