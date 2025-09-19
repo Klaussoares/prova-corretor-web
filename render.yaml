@@ -6,7 +6,7 @@ services:
       pip install --upgrade pip
       pip install -r requirements.txt
       apt-get update && apt-get install -y poppler-utils
-    startCommand: gunicorn main:app --timeout 300 --workers 1 --threads 1
+    startCommand: gunicorn main:app --timeout 300
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
