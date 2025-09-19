@@ -17,10 +17,10 @@ from src.config import (
     COORDS_ANTIGO,
     CLEANUP_DELAY_SECONDS,
     LOG_DIR,
+    LOG_FILE,
     is_email_authorized,
     get_log_entry
 )
-
 
 import google.generativeai as genai
 
